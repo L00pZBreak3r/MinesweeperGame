@@ -1,0 +1,314 @@
+﻿<!DOCTYPE html>
+<!-- saved from url=(0037)https://minesweeper-test.studiotg.ru/ -->
+<html lang="ru"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minesweeper</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      fieldset {
+        border: lightgray 1px solid;
+      }
+      legend {
+        color: gray;
+      }
+      label {
+        display: block;
+        float: left;
+        text-align: right;
+        padding-right: 10pt;
+        width: 45%;
+      }
+      .field-size input, .mines-count input {
+        width: 40pt;
+      }
+      small, small a {
+        color: gray;
+      }
+      input.buttonfinish {
+        display: block;
+  		margin-right: auto;
+  		margin-left: auto;
+      }
+      table {
+        border-collapse: collapse;
+        margin: 20px auto;
+      }
+      caption {
+        margin-bottom: 5pt;
+      }
+      td {
+        border: 1px solid #ccc;
+        text-align: center;
+        width: 25px;
+        height: 25px;
+        cursor: not-allowed;
+      }
+      td.cell-unknown {
+        cursor: pointer;
+        background-color: #f6f6f6;
+      }
+      td.cell-unknown:hover {
+        background-color: #eee;
+      }
+      td.cell-0 {
+        color: #eeeeee;
+      }
+      td.cell-1 {
+        color: blue;
+      }
+      td.cell-2 {
+        color: gray;
+      }
+      td.cell-3 {
+        color: orange;
+      }
+      td.cell-4 {
+        color: orangered;
+      }
+      td.cell-5 {
+        color: red;
+      }
+      td.cell-6 {
+        color: darkred;
+      }
+      td.cell-7 {
+        color: firebrick;
+      }
+      td.cell-8 {
+        color: brown;
+      }
+      td.cell-X {
+        color: white;
+        background-color: red;
+      }
+      td.cell-M {
+        color: white;
+        background-color: green;
+      }
+      td.cell-m {
+        color: brown;
+      }
+      td.cell-E {
+        color: white;
+        background-color: red;
+      }
+    </style>
+  </head>
+  <body>
+
+    <h1>Сапёр</h1>
+
+    <fieldset>
+      <legend>Настройки игры</legend>
+
+      <form id="new_game" onsubmit="postNew(); return false;">
+
+        <p>
+          <label for="url">URL API (можно относительный путь):</label>
+          <input id="url" value="/api">
+          <small>(<a href="/swagger/">спецификация</a>)</small>
+        </p>
+
+        <p class="field-size">
+          <label>Размер игрового поля (ширина x высота):</label>
+          <input id="aInputWidth" name="width" type="number" min="2" step="1" value="10" required="">
+          x
+          <input id="aInputHeight" name="height" type="number" min="2" step="1" value="10" required="">
+        </p>
+
+        <p class="mines-count">
+          <label>Количество мин:</label>
+          <input id="aInputMinesCount" name="mines_count" type="number" min="1" step="1" value="10" required="">
+        </p>
+
+        <p>
+          <label>&nbsp;</label>
+          <input type="submit" value="Новая игра" name="button">
+        </p>
+      </form>
+
+    </fieldset>
+  
+
+  <script>
+    const stateGame = {
+      matrix: [],
+      isLoading: false,
+      game_id: "",
+    };
+
+    window.addEventListener(
+	  "contextmenu",
+	  function (e) {
+	    e.preventDefault();
+	  },
+	  false,
+	);
+
+    function startGame({ game_id, width, height, mines_count, field }) {
+      removeTable();
+      stateGame.game_id = game_id;
+      const aInputWidth = document.getElementById("aInputWidth");
+      const aInputHeight = document.getElementById("aInputHeight");
+      const aInputMinesCount = document.getElementById("aInputMinesCount");
+      aInputWidth.value = width;
+      aInputHeight.value = height;
+      aInputMinesCount.value = mines_count;
+      createTable(field);
+    }
+
+    function removeTable() {
+      const aDivTable = document.getElementById("game_table");
+      const table = document.getElementById("table");
+      if (table) {
+        aDivTable.removeChild(table);
+        stateGame.matrix.length = 0;
+      }
+    }
+
+    function createTable(fields) {
+      const caption = document.createElement("caption");
+      caption.textContent = "Идет игра";
+
+      const table = document.createElement("table");
+      table.setAttribute("id", "table");
+      table.appendChild(caption);
+
+      fields.forEach((row, i) => {
+        const rows = [];
+        const tr = document.createElement("tr");
+
+        row.forEach((value, j) => {
+          const td = document.createElement("td");
+          td.textContent = value;
+          td.setAttribute("data-row", i);
+          td.setAttribute("data-col", j);
+          td.className = "cell-unknown";
+          td.addEventListener("click", DoOpenCell);
+          td.addEventListener("mouseup", DoSetMineMark);
+          tr.appendChild(td);
+          rows.push(td);
+        });
+
+        table.appendChild(tr);
+        stateGame.matrix.push(rows);
+      });
+
+      const aDivTable = document.getElementById("game_table");
+      aDivTable.appendChild(table);
+    }
+
+    function updateTable(fields, aIsOver, aWin) {
+      const isVictory = aIsOver && aWin;
+      const isDefeat = aIsOver && !aWin;
+
+      forEachMatrix(stateGame.matrix, (td, i, j) => {
+        const value = fields[i][j];
+        td.textContent = value;
+        td.className = "cell-" + (value == " " ? "unknown" : value);
+      });
+
+      if (isDefeat) {
+        updateStatus("Вы проиграли ☹");
+      } else if (isVictory) {
+        updateStatus("Вы победили ☺");
+      } else {
+        updateStatus("Играем!");
+      }
+    }
+
+    function updateStatus(text) {
+      const table = document.getElementById("table");
+      const caption = table.getElementsByTagName("caption")[0];
+      caption.textContent = text;
+    }
+
+    function forEachMatrix(array, cb) {
+      array.forEach((tr, i) => {
+        tr.forEach((td, j) => {
+          cb(td, i, j);
+        });
+      });
+    }
+
+    async function postNew() {
+      const { elements } = document.getElementById("new_game");
+      const button = elements.button;
+
+      const body = {
+        width: +elements.width.value,
+        height: +elements.height.value,
+        mines_count: +elements.mines_count.value,
+      };
+
+      button.value = "Загрузка...";
+      await post("new", body, startGame);
+      button.value = "Новая игра";
+    }
+
+    async function DoTurn(aRow, aCol, aMineMark, aFinish) {
+      if (stateGame.isLoading) return;
+      const body = {
+        game_id: stateGame.game_id,
+        row: aRow,
+        col: aCol,
+        mine_mark: aMineMark,
+        finish: aFinish
+      };
+      updateStatus("Загрузка...");
+      await post(
+        "turn",
+        body,
+        ({ field, completed, win }) => updateTable(field, completed, win)
+      );
+    }
+
+    async function DoOpenCell() {
+      const aRow = this.getAttribute("data-row");
+      const aCol = this.getAttribute("data-col");
+      await DoTurn(aRow, aCol, false, false);
+    }
+
+    async function DoFinish() {
+      await DoTurn(-1, -1, false, true);
+    }
+
+    async function DoSetMineMark(event) {
+      if (event.button == 2)
+      {
+        const aRow = this.getAttribute("data-row");
+        const aCol = this.getAttribute("data-col");
+        await DoTurn(aRow, aCol, true, false);
+      }
+    }
+
+    async function post(path, body, resolve, reject = () => null) {
+      const url = document.getElementById("url").value;
+      await fetch(`${url}/${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json;charset=utf-8",
+        },
+        body: JSON.stringify(body),
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (response.ok) {
+            resolve(data);
+          } else {
+            throw new Error(data.error || "Технические шоколадки оказались невкусными!");
+          }
+        })
+        .catch(async (e) => {
+          reject();
+          alert(e.message);
+        });
+    }
+  </script>
+
+<div id="game_table"><table id="table"><caption>Загрузка...</caption><tr><td data-row="0" data-col="0" class="cell-0">0</td><td data-row="0" data-col="1" class="cell-0">0</td><td data-row="0" data-col="2" class="cell-0">0</td><td data-row="0" data-col="3" class="cell-0">0</td><td data-row="0" data-col="4" class="cell-0">0</td><td data-row="0" data-col="5" class="cell-0">0</td><td data-row="0" data-col="6" class="cell-0">0</td><td data-row="0" data-col="7" class="cell-0">0</td><td data-row="0" data-col="8" class="cell-0">0</td><td data-row="0" data-col="9" class="cell-0">0</td><td data-row="0" data-col="10" class="cell-0">0</td><td data-row="0" data-col="11" class="cell-0">0</td><td data-row="0" data-col="12" class="cell-0">0</td><td data-row="0" data-col="13" class="cell-0">0</td><td data-row="0" data-col="14" class="cell-1">1</td><td data-row="0" data-col="15" class="cell-unknown"> </td><td data-row="0" data-col="16" class="cell-unknown"> </td><td data-row="0" data-col="17" class="cell-1">1</td><td data-row="0" data-col="18" class="cell-0">0</td><td data-row="0" data-col="19" class="cell-0">0</td></tr><tr><td data-row="1" data-col="0" class="cell-0">0</td><td data-row="1" data-col="1" class="cell-0">0</td><td data-row="1" data-col="2" class="cell-0">0</td><td data-row="1" data-col="3" class="cell-0">0</td><td data-row="1" data-col="4" class="cell-0">0</td><td data-row="1" data-col="5" class="cell-0">0</td><td data-row="1" data-col="6" class="cell-0">0</td><td data-row="1" data-col="7" class="cell-0">0</td><td data-row="1" data-col="8" class="cell-0">0</td><td data-row="1" data-col="9" class="cell-0">0</td><td data-row="1" data-col="10" class="cell-0">0</td><td data-row="1" data-col="11" class="cell-0">0</td><td data-row="1" data-col="12" class="cell-0">0</td><td data-row="1" data-col="13" class="cell-0">0</td><td data-row="1" data-col="14" class="cell-1">1</td><td data-row="1" data-col="15" class="cell-2">2</td><td data-row="1" data-col="16" class="cell-unknown"> </td><td data-row="1" data-col="17" class="cell-1">1</td><td data-row="1" data-col="18" class="cell-0">0</td><td data-row="1" data-col="19" class="cell-0">0</td></tr><tr><td data-row="2" data-col="0" class="cell-0">0</td><td data-row="2" data-col="1" class="cell-0">0</td><td data-row="2" data-col="2" class="cell-0">0</td><td data-row="2" data-col="3" class="cell-0">0</td><td data-row="2" data-col="4" class="cell-0">0</td><td data-row="2" data-col="5" class="cell-1">1</td><td data-row="2" data-col="6" class="cell-1">1</td><td data-row="2" data-col="7" class="cell-2">2</td><td data-row="2" data-col="8" class="cell-1">1</td><td data-row="2" data-col="9" class="cell-1">1</td><td data-row="2" data-col="10" class="cell-0">0</td><td data-row="2" data-col="11" class="cell-0">0</td><td data-row="2" data-col="12" class="cell-0">0</td><td data-row="2" data-col="13" class="cell-0">0</td><td data-row="2" data-col="14" class="cell-0">0</td><td data-row="2" data-col="15" class="cell-1">1</td><td data-row="2" data-col="16" class="cell-1">1</td><td data-row="2" data-col="17" class="cell-1">1</td><td data-row="2" data-col="18" class="cell-0">0</td><td data-row="2" data-col="19" class="cell-0">0</td></tr><tr><td data-row="3" data-col="0" class="cell-0">0</td><td data-row="3" data-col="1" class="cell-0">0</td><td data-row="3" data-col="2" class="cell-0">0</td><td data-row="3" data-col="3" class="cell-0">0</td><td data-row="3" data-col="4" class="cell-0">0</td><td data-row="3" data-col="5" class="cell-1">1</td><td data-row="3" data-col="6" class="cell-unknown"> </td><td data-row="3" data-col="7" class="cell-unknown"> </td><td data-row="3" data-col="8" class="cell-unknown"> </td><td data-row="3" data-col="9" class="cell-1">1</td><td data-row="3" data-col="10" class="cell-0">0</td><td data-row="3" data-col="11" class="cell-0">0</td><td data-row="3" data-col="12" class="cell-0">0</td><td data-row="3" data-col="13" class="cell-0">0</td><td data-row="3" data-col="14" class="cell-0">0</td><td data-row="3" data-col="15" class="cell-0">0</td><td data-row="3" data-col="16" class="cell-0">0</td><td data-row="3" data-col="17" class="cell-0">0</td><td data-row="3" data-col="18" class="cell-0">0</td><td data-row="3" data-col="19" class="cell-0">0</td></tr><tr><td data-row="4" data-col="0" class="cell-0">0</td><td data-row="4" data-col="1" class="cell-0">0</td><td data-row="4" data-col="2" class="cell-0">0</td><td data-row="4" data-col="3" class="cell-0">0</td><td data-row="4" data-col="4" class="cell-0">0</td><td data-row="4" data-col="5" class="cell-1">1</td><td data-row="4" data-col="6" class="cell-1">1</td><td data-row="4" data-col="7" class="cell-2">2</td><td data-row="4" data-col="8" class="cell-1">1</td><td data-row="4" data-col="9" class="cell-1">1</td><td data-row="4" data-col="10" class="cell-0">0</td><td data-row="4" data-col="11" class="cell-0">0</td><td data-row="4" data-col="12" class="cell-0">0</td><td data-row="4" data-col="13" class="cell-0">0</td><td data-row="4" data-col="14" class="cell-0">0</td><td data-row="4" data-col="15" class="cell-0">0</td><td data-row="4" data-col="16" class="cell-0">0</td><td data-row="4" data-col="17" class="cell-0">0</td><td data-row="4" data-col="18" class="cell-0">0</td><td data-row="4" data-col="19" class="cell-0">0</td></tr><tr><td data-row="5" data-col="0" class="cell-0">0</td><td data-row="5" data-col="1" class="cell-1">1</td><td data-row="5" data-col="2" class="cell-1">1</td><td data-row="5" data-col="3" class="cell-1">1</td><td data-row="5" data-col="4" class="cell-0">0</td><td data-row="5" data-col="5" class="cell-0">0</td><td data-row="5" data-col="6" class="cell-0">0</td><td data-row="5" data-col="7" class="cell-0">0</td><td data-row="5" data-col="8" class="cell-0">0</td><td data-row="5" data-col="9" class="cell-0">0</td><td data-row="5" data-col="10" class="cell-0">0</td><td data-row="5" data-col="11" class="cell-0">0</td><td data-row="5" data-col="12" class="cell-0">0</td><td data-row="5" data-col="13" class="cell-0">0</td><td data-row="5" data-col="14" class="cell-0">0</td><td data-row="5" data-col="15" class="cell-0">0</td><td data-row="5" data-col="16" class="cell-0">0</td><td data-row="5" data-col="17" class="cell-0">0</td><td data-row="5" data-col="18" class="cell-0">0</td><td data-row="5" data-col="19" class="cell-0">0</td></tr><tr><td data-row="6" data-col="0" class="cell-0">0</td><td data-row="6" data-col="1" class="cell-1">1</td><td data-row="6" data-col="2" class="cell-unknown"> </td><td data-row="6" data-col="3" class="cell-1">1</td><td data-row="6" data-col="4" class="cell-0">0</td><td data-row="6" data-col="5" class="cell-0">0</td><td data-row="6" data-col="6" class="cell-0">0</td><td data-row="6" data-col="7" class="cell-0">0</td><td data-row="6" data-col="8" class="cell-0">0</td><td data-row="6" data-col="9" class="cell-0">0</td><td data-row="6" data-col="10" class="cell-0">0</td><td data-row="6" data-col="11" class="cell-0">0</td><td data-row="6" data-col="12" class="cell-0">0</td><td data-row="6" data-col="13" class="cell-0">0</td><td data-row="6" data-col="14" class="cell-0">0</td><td data-row="6" data-col="15" class="cell-0">0</td><td data-row="6" data-col="16" class="cell-0">0</td><td data-row="6" data-col="17" class="cell-0">0</td><td data-row="6" data-col="18" class="cell-0">0</td><td data-row="6" data-col="19" class="cell-0">0</td></tr><tr><td data-row="7" data-col="0" class="cell-0">0</td><td data-row="7" data-col="1" class="cell-1">1</td><td data-row="7" data-col="2" class="cell-1">1</td><td data-row="7" data-col="3" class="cell-1">1</td><td data-row="7" data-col="4" class="cell-0">0</td><td data-row="7" data-col="5" class="cell-0">0</td><td data-row="7" data-col="6" class="cell-0">0</td><td data-row="7" data-col="7" class="cell-0">0</td><td data-row="7" data-col="8" class="cell-0">0</td><td data-row="7" data-col="9" class="cell-0">0</td><td data-row="7" data-col="10" class="cell-0">0</td><td data-row="7" data-col="11" class="cell-0">0</td><td data-row="7" data-col="12" class="cell-0">0</td><td data-row="7" data-col="13" class="cell-0">0</td><td data-row="7" data-col="14" class="cell-0">0</td><td data-row="7" data-col="15" class="cell-0">0</td><td data-row="7" data-col="16" class="cell-1">1</td><td data-row="7" data-col="17" class="cell-1">1</td><td data-row="7" data-col="18" class="cell-1">1</td><td data-row="7" data-col="19" class="cell-0">0</td></tr><tr><td data-row="8" data-col="0" class="cell-0">0</td><td data-row="8" data-col="1" class="cell-0">0</td><td data-row="8" data-col="2" class="cell-0">0</td><td data-row="8" data-col="3" class="cell-0">0</td><td data-row="8" data-col="4" class="cell-0">0</td><td data-row="8" data-col="5" class="cell-0">0</td><td data-row="8" data-col="6" class="cell-0">0</td><td data-row="8" data-col="7" class="cell-0">0</td><td data-row="8" data-col="8" class="cell-0">0</td><td data-row="8" data-col="9" class="cell-1">1</td><td data-row="8" data-col="10" class="cell-1">1</td><td data-row="8" data-col="11" class="cell-1">1</td><td data-row="8" data-col="12" class="cell-0">0</td><td data-row="8" data-col="13" class="cell-0">0</td><td data-row="8" data-col="14" class="cell-0">0</td><td data-row="8" data-col="15" class="cell-0">0</td><td data-row="8" data-col="16" class="cell-1">1</td><td data-row="8" data-col="17" class="cell-unknown"> </td><td data-row="8" data-col="18" class="cell-1">1</td><td data-row="8" data-col="19" class="cell-0">0</td></tr><tr><td data-row="9" data-col="0" class="cell-0">0</td><td data-row="9" data-col="1" class="cell-0">0</td><td data-row="9" data-col="2" class="cell-0">0</td><td data-row="9" data-col="3" class="cell-0">0</td><td data-row="9" data-col="4" class="cell-0">0</td><td data-row="9" data-col="5" class="cell-0">0</td><td data-row="9" data-col="6" class="cell-0">0</td><td data-row="9" data-col="7" class="cell-0">0</td><td data-row="9" data-col="8" class="cell-0">0</td><td data-row="9" data-col="9" class="cell-1">1</td><td data-row="9" data-col="10" class="cell-unknown"> </td><td data-row="9" data-col="11" class="cell-1">1</td><td data-row="9" data-col="12" class="cell-0">0</td><td data-row="9" data-col="13" class="cell-0">0</td><td data-row="9" data-col="14" class="cell-0">0</td><td data-row="9" data-col="15" class="cell-0">0</td><td data-row="9" data-col="16" class="cell-1">1</td><td data-row="9" data-col="17" class="cell-1">1</td><td data-row="9" data-col="18" class="cell-1">1</td><td data-row="9" data-col="19" class="cell-0">0</td></tr><tr><td data-row="10" data-col="0" class="cell-0">0</td><td data-row="10" data-col="1" class="cell-0">0</td><td data-row="10" data-col="2" class="cell-0">0</td><td data-row="10" data-col="3" class="cell-0">0</td><td data-row="10" data-col="4" class="cell-0">0</td><td data-row="10" data-col="5" class="cell-0">0</td><td data-row="10" data-col="6" class="cell-0">0</td><td data-row="10" data-col="7" class="cell-0">0</td><td data-row="10" data-col="8" class="cell-0">0</td><td data-row="10" data-col="9" class="cell-1">1</td><td data-row="10" data-col="10" class="cell-1">1</td><td data-row="10" data-col="11" class="cell-1">1</td><td data-row="10" data-col="12" class="cell-0">0</td><td data-row="10" data-col="13" class="cell-0">0</td><td data-row="10" data-col="14" class="cell-0">0</td><td data-row="10" data-col="15" class="cell-0">0</td><td data-row="10" data-col="16" class="cell-0">0</td><td data-row="10" data-col="17" class="cell-0">0</td><td data-row="10" data-col="18" class="cell-0">0</td><td data-row="10" data-col="19" class="cell-0">0</td></tr><tr><td data-row="11" data-col="0" class="cell-0">0</td><td data-row="11" data-col="1" class="cell-0">0</td><td data-row="11" data-col="2" class="cell-0">0</td><td data-row="11" data-col="3" class="cell-0">0</td><td data-row="11" data-col="4" class="cell-0">0</td><td data-row="11" data-col="5" class="cell-0">0</td><td data-row="11" data-col="6" class="cell-0">0</td><td data-row="11" data-col="7" class="cell-0">0</td><td data-row="11" data-col="8" class="cell-0">0</td><td data-row="11" data-col="9" class="cell-0">0</td><td data-row="11" data-col="10" class="cell-0">0</td><td data-row="11" data-col="11" class="cell-0">0</td><td data-row="11" data-col="12" class="cell-0">0</td><td data-row="11" data-col="13" class="cell-0">0</td><td data-row="11" data-col="14" class="cell-0">0</td><td data-row="11" data-col="15" class="cell-0">0</td><td data-row="11" data-col="16" class="cell-0">0</td><td data-row="11" data-col="17" class="cell-0">0</td><td data-row="11" data-col="18" class="cell-0">0</td><td data-row="11" data-col="19" class="cell-0">0</td></tr><tr><td data-row="12" data-col="0" class="cell-0">0</td><td data-row="12" data-col="1" class="cell-0">0</td><td data-row="12" data-col="2" class="cell-0">0</td><td data-row="12" data-col="3" class="cell-0">0</td><td data-row="12" data-col="4" class="cell-0">0</td><td data-row="12" data-col="5" class="cell-0">0</td><td data-row="12" data-col="6" class="cell-0">0</td><td data-row="12" data-col="7" class="cell-0">0</td><td data-row="12" data-col="8" class="cell-0">0</td><td data-row="12" data-col="9" class="cell-0">0</td><td data-row="12" data-col="10" class="cell-0">0</td><td data-row="12" data-col="11" class="cell-0">0</td><td data-row="12" data-col="12" class="cell-0">0</td><td data-row="12" data-col="13" class="cell-0">0</td><td data-row="12" data-col="14" class="cell-0">0</td><td data-row="12" data-col="15" class="cell-0">0</td><td data-row="12" data-col="16" class="cell-0">0</td><td data-row="12" data-col="17" class="cell-0">0</td><td data-row="12" data-col="18" class="cell-0">0</td><td data-row="12" data-col="19" class="cell-0">0</td></tr><tr><td data-row="13" data-col="0" class="cell-0">0</td><td data-row="13" data-col="1" class="cell-0">0</td><td data-row="13" data-col="2" class="cell-0">0</td><td data-row="13" data-col="3" class="cell-0">0</td><td data-row="13" data-col="4" class="cell-0">0</td><td data-row="13" data-col="5" class="cell-0">0</td><td data-row="13" data-col="6" class="cell-0">0</td><td data-row="13" data-col="7" class="cell-0">0</td><td data-row="13" data-col="8" class="cell-0">0</td><td data-row="13" data-col="9" class="cell-0">0</td><td data-row="13" data-col="10" class="cell-0">0</td><td data-row="13" data-col="11" class="cell-0">0</td><td data-row="13" data-col="12" class="cell-0">0</td><td data-row="13" data-col="13" class="cell-0">0</td><td data-row="13" data-col="14" class="cell-0">0</td><td data-row="13" data-col="15" class="cell-0">0</td><td data-row="13" data-col="16" class="cell-0">0</td><td data-row="13" data-col="17" class="cell-0">0</td><td data-row="13" data-col="18" class="cell-0">0</td><td data-row="13" data-col="19" class="cell-0">0</td></tr><tr><td data-row="14" data-col="0" class="cell-0">0</td><td data-row="14" data-col="1" class="cell-0">0</td><td data-row="14" data-col="2" class="cell-0">0</td><td data-row="14" data-col="3" class="cell-0">0</td><td data-row="14" data-col="4" class="cell-0">0</td><td data-row="14" data-col="5" class="cell-0">0</td><td data-row="14" data-col="6" class="cell-0">0</td><td data-row="14" data-col="7" class="cell-0">0</td><td data-row="14" data-col="8" class="cell-0">0</td><td data-row="14" data-col="9" class="cell-0">0</td><td data-row="14" data-col="10" class="cell-0">0</td><td data-row="14" data-col="11" class="cell-0">0</td><td data-row="14" data-col="12" class="cell-0">0</td><td data-row="14" data-col="13" class="cell-0">0</td><td data-row="14" data-col="14" class="cell-0">0</td><td data-row="14" data-col="15" class="cell-0">0</td><td data-row="14" data-col="16" class="cell-0">0</td><td data-row="14" data-col="17" class="cell-0">0</td><td data-row="14" data-col="18" class="cell-0">0</td><td data-row="14" data-col="19" class="cell-0">0</td></tr><tr><td data-row="15" data-col="0" class="cell-0">0</td><td data-row="15" data-col="1" class="cell-0">0</td><td data-row="15" data-col="2" class="cell-0">0</td><td data-row="15" data-col="3" class="cell-0">0</td><td data-row="15" data-col="4" class="cell-0">0</td><td data-row="15" data-col="5" class="cell-0">0</td><td data-row="15" data-col="6" class="cell-0">0</td><td data-row="15" data-col="7" class="cell-0">0</td><td data-row="15" data-col="8" class="cell-0">0</td><td data-row="15" data-col="9" class="cell-0">0</td><td data-row="15" data-col="10" class="cell-0">0</td><td data-row="15" data-col="11" class="cell-0">0</td><td data-row="15" data-col="12" class="cell-1">1</td><td data-row="15" data-col="13" class="cell-1">1</td><td data-row="15" data-col="14" class="cell-1">1</td><td data-row="15" data-col="15" class="cell-0">0</td><td data-row="15" data-col="16" class="cell-0">0</td><td data-row="15" data-col="17" class="cell-0">0</td><td data-row="15" data-col="18" class="cell-0">0</td><td data-row="15" data-col="19" class="cell-0">0</td></tr><tr><td data-row="16" data-col="0" class="cell-0">0</td><td data-row="16" data-col="1" class="cell-1">1</td><td data-row="16" data-col="2" class="cell-1">1</td><td data-row="16" data-col="3" class="cell-1">1</td><td data-row="16" data-col="4" class="cell-0">0</td><td data-row="16" data-col="5" class="cell-0">0</td><td data-row="16" data-col="6" class="cell-0">0</td><td data-row="16" data-col="7" class="cell-0">0</td><td data-row="16" data-col="8" class="cell-0">0</td><td data-row="16" data-col="9" class="cell-0">0</td><td data-row="16" data-col="10" class="cell-0">0</td><td data-row="16" data-col="11" class="cell-0">0</td><td data-row="16" data-col="12" class="cell-1">1</td><td data-row="16" data-col="13" class="cell-unknown"> </td><td data-row="16" data-col="14" class="cell-1">1</td><td data-row="16" data-col="15" class="cell-0">0</td><td data-row="16" data-col="16" class="cell-0">0</td><td data-row="16" data-col="17" class="cell-0">0</td><td data-row="16" data-col="18" class="cell-0">0</td><td data-row="16" data-col="19" class="cell-0">0</td></tr><tr><td data-row="17" data-col="0" class="cell-0">0</td><td data-row="17" data-col="1" class="cell-1">1</td><td data-row="17" data-col="2" class="cell-unknown"> </td><td data-row="17" data-col="3" class="cell-1">1</td><td data-row="17" data-col="4" class="cell-0">0</td><td data-row="17" data-col="5" class="cell-0">0</td><td data-row="17" data-col="6" class="cell-1">1</td><td data-row="17" data-col="7" class="cell-1">1</td><td data-row="17" data-col="8" class="cell-1">1</td><td data-row="17" data-col="9" class="cell-0">0</td><td data-row="17" data-col="10" class="cell-0">0</td><td data-row="17" data-col="11" class="cell-0">0</td><td data-row="17" data-col="12" class="cell-1">1</td><td data-row="17" data-col="13" class="cell-1">1</td><td data-row="17" data-col="14" class="cell-1">1</td><td data-row="17" data-col="15" class="cell-0">0</td><td data-row="17" data-col="16" class="cell-0">0</td><td data-row="17" data-col="17" class="cell-0">0</td><td data-row="17" data-col="18" class="cell-0">0</td><td data-row="17" data-col="19" class="cell-0">0</td></tr><tr><td data-row="18" data-col="0" class="cell-0">0</td><td data-row="18" data-col="1" class="cell-1">1</td><td data-row="18" data-col="2" class="cell-1">1</td><td data-row="18" data-col="3" class="cell-1">1</td><td data-row="18" data-col="4" class="cell-0">0</td><td data-row="18" data-col="5" class="cell-0">0</td><td data-row="18" data-col="6" class="cell-1">1</td><td data-row="18" data-col="7" class="cell-unknown"> </td><td data-row="18" data-col="8" class="cell-1">1</td><td data-row="18" data-col="9" class="cell-0">0</td><td data-row="18" data-col="10" class="cell-0">0</td><td data-row="18" data-col="11" class="cell-0">0</td><td data-row="18" data-col="12" class="cell-0">0</td><td data-row="18" data-col="13" class="cell-0">0</td><td data-row="18" data-col="14" class="cell-0">0</td><td data-row="18" data-col="15" class="cell-0">0</td><td data-row="18" data-col="16" class="cell-0">0</td><td data-row="18" data-col="17" class="cell-0">0</td><td data-row="18" data-col="18" class="cell-0">0</td><td data-row="18" data-col="19" class="cell-0">0</td></tr><tr><td data-row="19" data-col="0" class="cell-0">0</td><td data-row="19" data-col="1" class="cell-0">0</td><td data-row="19" data-col="2" class="cell-0">0</td><td data-row="19" data-col="3" class="cell-0">0</td><td data-row="19" data-col="4" class="cell-0">0</td><td data-row="19" data-col="5" class="cell-0">0</td><td data-row="19" data-col="6" class="cell-1">1</td><td data-row="19" data-col="7" class="cell-unknown"> </td><td data-row="19" data-col="8" class="cell-1">1</td><td data-row="19" data-col="9" class="cell-0">0</td><td data-row="19" data-col="10" class="cell-0">0</td><td data-row="19" data-col="11" class="cell-0">0</td><td data-row="19" data-col="12" class="cell-0">0</td><td data-row="19" data-col="13" class="cell-0">0</td><td data-row="19" data-col="14" class="cell-0">0</td><td data-row="19" data-col="15" class="cell-0">0</td><td data-row="19" data-col="16" class="cell-0">0</td><td data-row="19" data-col="17" class="cell-0">0</td><td data-row="19" data-col="18" class="cell-0">0</td><td data-row="19" data-col="19" class="cell-0">0</td></tr></table></div>
+<input type="button" value="Завершить" name="buttonFinish" class="buttonfinish" onclick="DoFinish()">
+</body></html>

@@ -1,0 +1,5 @@
+@MinesweeperApiApp_HostAddress = https://localhost:7216
+
+POST {{MinesweeperApiApp_HostAddress}}/api/new
+
+###
