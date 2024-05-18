@@ -138,6 +138,7 @@
       matrix: [],
       isLoading: false,
       game_id: "",
+      isOver: false
     };
 
     window.addEventListener(
@@ -151,6 +152,7 @@
     function startGame({ game_id, width, height, mines_count, field }) {
       removeTable();
       stateGame.game_id = game_id;
+      stateGame.isOver = false;
       const aInputWidth = document.getElementById("aInputWidth");
       const aInputHeight = document.getElementById("aInputHeight");
       const aInputMinesCount = document.getElementById("aInputMinesCount");
@@ -204,6 +206,7 @@
     function updateTable(fields, aIsOver, aWin) {
       const isVictory = aIsOver && aWin;
       const isDefeat = aIsOver && !aWin;
+      stateGame.isOver = aIsOver;
 
       forEachMatrix(stateGame.matrix, (td, i, j) => {
         const value = fields[i][j];
@@ -251,6 +254,11 @@
 
     async function DoTurn(aRow, aCol, aMineMark, aFinish) {
       if (stateGame.isLoading) return;
+      if (stateGame.isOver)
+      {
+        alert("Игра завершена.");
+        return;
+      }
       const body = {
         game_id: stateGame.game_id,
         row: aRow,
